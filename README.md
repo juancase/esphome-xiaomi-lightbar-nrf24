@@ -131,6 +131,13 @@ light:
       name: Pair
 ```
 
+Without a version, ESPHome uses the latest code on `main`. To stay on a release until you choose to update, add
+its tag:
+
+```yaml
+  - source: github://juancase/esphome-xiaomi-lightbar-nrf24@v1.0.0
+```
+
 The files in `example/` load the component from this repository's `components/` folder, so they work as they
 are from a clone. To use one from the ESPHome dashboard, copy it there and replace its `external_components:`
 block with the one above.
