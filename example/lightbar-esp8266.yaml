@@ -1,0 +1,66 @@
+esphome:
+  name: lightbar
+
+esp8266:
+  board: nodemcuv2
+  restore_from_flash: true
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+logger:
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+time:
+  - platform: homeassistant
+
+spi:
+  clk_pin: GPIO14
+  miso_pin: GPIO12
+  mosi_pin: GPIO13
+
+xiaomi_lightbar:
+  cs_pin: GPIO5
+  ce_pin: GPIO4
+
+light:
+  - platform: xiaomi_lightbar
+    name: Light bar
+    serial: 0x123456
+    remotes:
+      - 0xABCDEF
+    pair:
+      name: Pair
+    calibrate_on:
+      name: "Calibrate: bar is on"
+    calibrate_off:
+      name: "Calibrate: bar is off"
+    resend:
+      name: "Calibrate: resend brightness and temperature"
+    auto_calibrate:
+      enabled:
+        name: Daily calibration
+      time:
+        name: Daily calibration time
+        initial_value: "04:00"
+      quiet_minutes:
+        name: Daily calibration quiet minutes
+        initial_value: 60
+
+event:
+  - platform: xiaomi_lightbar
+    name: Remote
+    serial: 0xABCDEF

@@ -1,0 +1,16 @@
+# Credentials: never commit
+secrets.yaml
+!example/secrets.yaml
+
+# Build output (ESPHome, PlatformIO native tests)
+.esphome/
+.pio/
+__pycache__/
+
+# Personal configurations (real serials, WiFi)
+local/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
