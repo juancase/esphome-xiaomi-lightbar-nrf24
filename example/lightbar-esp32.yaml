@@ -65,3 +65,25 @@ event:
   - platform: xiaomi_lightbar
     name: Remote
     serial: 0xABCDEF
+
+sensor:
+  - platform: wifi_signal
+    name: WiFi signal
+    entity_category: diagnostic
+    update_interval: 60s
+    on_value:
+      - text_sensor.template.publish:
+          id: wifi_signal_quality
+          state: !lambda |-
+            if (x >= -50) return "Excellent";
+            if (x >= -60) return "Good";
+            if (x >= -70) return "Fair";
+            if (x >= -80) return "Weak";
+            return "Bad";
+
+text_sensor:
+  - platform: template
+    id: wifi_signal_quality
+    name: WiFi signal quality
+    icon: mdi:wifi
+    entity_category: diagnostic

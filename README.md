@@ -73,6 +73,7 @@ logic was first developed as an unpublished rewrite of that firmware and then mo
   device: once a day the bar is assumed off, postponed while the bar is in use.
 - **Restore after reboot**: rebooting the controller never toggles the bar.
 - **Several bars and remotes** per controller, each with its own serial.
+- **WiFi signal** in the examples: the signal in dBm and its quality as text (*Excellent* to *Bad*).
 
 ## Requirements
 
@@ -307,6 +308,16 @@ controller are supported by the configuration but have not been tested on hardwa
   share of the remote's packets is not received; this only costs wheel steps.
 - **16 levels.** Brightness and color temperature have 16 levels each on the bar; values in between are
   rounded.
+- **Remote without WiFi.** Relaying the remote needs no WiFi, so the bar keeps obeying the remote while the
+  controller is offline, but Home Assistant does not change. The controller keeps tracking the state, and Home
+  Assistant gets it when the controller reconnects; remote events fired meanwhile are lost. A weak signal looks
+  like this: the bar reacts and Home Assistant does not. Check the *WiFi signal* entities of the examples.
+
+  ```
+  Remote ──2.4 GHz radio──▶ nRF24 ─SPI─▶ ESP ─SPI─▶ nRF24 ──radio──▶ Bar     (no WiFi)
+                                          │
+                                          └──WiFi──▶ Home Assistant          (needs WiFi)
+  ```
 
 ## Development
 
