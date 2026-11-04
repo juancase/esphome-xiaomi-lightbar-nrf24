@@ -37,6 +37,27 @@ void unshift_raw(const uint8_t raw[RAW_SIZE], uint8_t out[PACKET_SIZE]) {
     out[i] = ((raw[i - 1] >> 1) & 0x0F) << 4 | (raw[i - 1] & 0x01) << 3 | raw[i] >> 5;
 }
 
+bool parse_raw(const uint8_t raw[PACKET_SIZE], Packet &out) {
+  // With RECEIVE_ADDRESS, captures on an ESP32-C3 + nRF24 have shown 1-, 3- and 5-bit
+  // alignments. Keep the legacy alignment first, then try the remaining bit phases.
+  static constexpr uint8_t SHIFTS[] = {5, 1, 3, 0, 2, 4, 6, 7};
+  uint8_t data[PACKET_SIZE];
+  for (uint8_t shift : SHIFTS) {
+    for (size_t i = 0; i < PACKET_SIZE; i++) {
+      if (shift == 0) {
+        data[i] = raw[i];
+      } else {
+        uint8_t prefix = i == 0 ? PREAMBLE[0] & (0xFFu << (8 - shift))
+                                : raw[i - 1] << (8 - shift);
+        data[i] = prefix | (raw[i] >> shift);
+      }
+    }
+    if (data[11] == 0xFF && parse_packet(data, out))
+      return true;
+  }
+  return false;
+}
+
 bool parse_packet(const uint8_t data[PACKET_SIZE], Packet &out) {
   if (memcmp(data, PREAMBLE, sizeof(PREAMBLE)) != 0)
     return false;

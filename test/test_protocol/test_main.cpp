@@ -110,6 +110,114 @@ void test_unshift_raw_is_a_5_bit_shift() {
   TEST_ASSERT_EQUAL_HEX8(0x53, out[0]);
 }
 
+// Generate a radio payload by removing known leading preamble bits. The final
+// `shift` bits are outside the packet; deliberately fill them with ones.
+static void radio_payload(const uint8_t packet[PACKET_SIZE], uint8_t shift, uint8_t raw[PACKET_SIZE]) {
+  for (size_t i = 0; i < PACKET_SIZE; i++) {
+    uint8_t next = i + 1 < PACKET_SIZE ? packet[i + 1] : 0xFF;
+    raw[i] = shift == 0 ? packet[i] : (uint8_t) (packet[i] << shift | next >> (8 - shift));
+  }
+}
+
+void test_parse_raw_all_bit_alignments() {
+  // Synthetic shifts of the published captures, not additional over-the-air captures.
+  for (const auto &captured : CAPTURED) {
+    for (uint8_t shift = 0; shift < 8; shift++) {
+      uint8_t raw[PACKET_SIZE];  // No 18th byte available, as in the actual SPI read.
+      radio_payload(captured, shift, raw);
+      Packet packet{};
+      TEST_ASSERT_TRUE(parse_raw(raw, packet));
+      TEST_ASSERT_EQUAL_HEX32(0x01B960, packet.serial);
+      TEST_ASSERT_EQUAL_HEX8(captured[12], packet.seq);
+      TEST_ASSERT_EQUAL_HEX8(captured[13], packet.command);
+      TEST_ASSERT_EQUAL_HEX8(captured[14], packet.options);
+      // Unused trailing bits have no effect on decoding.
+      raw[PACKET_SIZE - 1] ^= (1u << shift) - 1;
+      TEST_ASSERT_TRUE(parse_raw(raw, packet));
+    }
+  }
+}
+
+void test_parse_raw_capture_derived_vectors() {
+  // Derived from ESP32-C3 + nRF24 captures at offsets 1, 3 and 5.
+  // Remote IDs were replaced with 0x112233 and CRCs recomputed before shifting
+  // back to the captured alignment. Other bytes and unused tail bits are retained.
+  static const struct {
+    uint8_t raw[PACKET_SIZE];
+    uint8_t seq, command, options, shift;
+  } vectors[] = {
+    {{0xA6, 0x72, 0x29, 0xBA, 0x38, 0x92, 0x68, 0x24, 0x22, 0x44, 0x67, 0xFF, 0x6C, 0x0B, 0xFE, 0x42, 0x3E}, 182, 5, 255, 1},
+    {{0x99, 0xC8, 0xA6, 0xE8, 0xE2, 0x49, 0xA0, 0x90, 0x89, 0x11, 0x9F, 0xFD, 0xC8, 0x0F, 0xFE, 0x0F, 0x55}, 185, 1, 255, 3},
+    {{0x67, 0x22, 0x9B, 0xA3, 0x89, 0x26, 0x82, 0x42, 0x24, 0x46, 0x7F, 0xF6, 0xC0, 0xBF, 0xE4, 0x23, 0xE7}, 182, 5, 255, 5},
+  };
+  for (const auto &vector : vectors) {
+    Packet packet{};
+    TEST_ASSERT_TRUE(parse_raw(vector.raw, packet));
+    TEST_ASSERT_EQUAL_HEX32(0x112233, packet.serial);
+    TEST_ASSERT_EQUAL_UINT8(vector.seq, packet.seq);
+    TEST_ASSERT_EQUAL_UINT8(vector.command, packet.command);
+    TEST_ASSERT_EQUAL_UINT8(vector.options, packet.options);
+    uint8_t legacy[PACKET_SIZE];
+    uint8_t legacy_raw[RAW_SIZE] = {};
+    memcpy(legacy_raw, vector.raw, PACKET_SIZE);
+    unshift_raw(legacy_raw, legacy);
+    TEST_ASSERT_EQUAL(vector.shift == 5, parse_packet(legacy, packet));
+  }
+}
+
+void test_parse_raw_rejects_corrupted_received_bits() {
+  for (uint8_t shift = 0; shift < 8; shift++) {
+    uint8_t original[PACKET_SIZE];
+    radio_payload(CAPTURED[0], shift, original);
+    // Includes every received preamble, payload and CRC bit, excluding only
+    // the trailing bits outside the packet and the absent known prefix bits.
+    for (size_t bit = 0; bit < PACKET_SIZE * 8 - shift; bit++) {
+      uint8_t raw[PACKET_SIZE];
+      memcpy(raw, original, sizeof(raw));
+      raw[bit / 8] ^= 0x80 >> (bit % 8);
+      Packet packet{0xABCDEF, 0x42, 0x04, 0x03};
+      TEST_ASSERT_FALSE(parse_raw(raw, packet));
+      TEST_ASSERT_EQUAL_HEX32(0xABCDEF, packet.serial);
+      TEST_ASSERT_EQUAL_HEX8(0x42, packet.seq);
+      TEST_ASSERT_EQUAL_HEX8(0x04, packet.command);
+      TEST_ASSERT_EQUAL_HEX8(0x03, packet.options);
+    }
+  }
+}
+
+void test_parse_raw_rejects_bad_separator_with_valid_crc() {
+  uint8_t data[PACKET_SIZE];
+  memcpy(data, CAPTURED[0], sizeof(data));
+  data[11] = 0;
+  uint16_t checksum = crc16(data, PACKET_SIZE - 2);
+  data[15] = checksum >> 8;
+  data[16] = checksum;
+  for (uint8_t shift = 0; shift < 8; shift++) {
+    uint8_t raw[PACKET_SIZE];
+    radio_payload(data, shift, raw);
+    Packet packet{};
+    TEST_ASSERT_FALSE(parse_raw(raw, packet));
+  }
+}
+
+void test_parse_raw_rejects_noise() {
+  uint8_t raw[PACKET_SIZE] = {};
+  Packet packet{};
+  TEST_ASSERT_FALSE(parse_raw(raw, packet));
+  memset(raw, 0xFF, sizeof(raw));
+  TEST_ASSERT_FALSE(parse_raw(raw, packet));
+  uint32_t random = 0x12345678;
+  for (int sample = 0; sample < 4096; sample++) {
+    for (auto &byte : raw) {
+      random ^= random << 13;
+      random ^= random >> 17;
+      random ^= random << 5;
+      byte = random;
+    }
+    TEST_ASSERT_FALSE(parse_raw(raw, packet));
+  }
+}
+
 /* -- Sequence counters --------------------------------------------------------------------------------------- */
 
 void test_sequence_drops_repeated_copies() {
@@ -235,6 +343,11 @@ int main() {
   RUN_TEST(test_parse_packet_rejects_corruption);
   RUN_TEST(test_unshift_raw_round_trip);
   RUN_TEST(test_unshift_raw_is_a_5_bit_shift);
+  RUN_TEST(test_parse_raw_all_bit_alignments);
+  RUN_TEST(test_parse_raw_capture_derived_vectors);
+  RUN_TEST(test_parse_raw_rejects_corrupted_received_bits);
+  RUN_TEST(test_parse_raw_rejects_bad_separator_with_valid_crc);
+  RUN_TEST(test_parse_raw_rejects_noise);
   RUN_TEST(test_sequence_drops_repeated_copies);
   RUN_TEST(test_sequence_counts_missed_packets);
   RUN_TEST(test_sequence_first_packet_is_always_accepted);

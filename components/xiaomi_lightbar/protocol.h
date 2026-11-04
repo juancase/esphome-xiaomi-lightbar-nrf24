@@ -23,7 +23,7 @@ namespace esphome {
 namespace xiaomi_lightbar {
 
 static const size_t PACKET_SIZE = 17;
-// Bytes read from the radio when receiving: one more than PACKET_SIZE, see unshift_raw().
+// Legacy receive buffer size. Realignment only needs the first PACKET_SIZE bytes.
 static const size_t RAW_SIZE = 18;
 
 static constexpr uint8_t PREAMBLE[8] = {0x53, 0x39, 0x14, 0xDD, 0x1C, 0x49, 0x34, 0x12};
@@ -55,9 +55,15 @@ uint16_t crc16(const uint8_t *data, size_t len);
 void build_packet(uint32_t serial, uint8_t seq, uint8_t command, uint8_t options, uint8_t out[PACKET_SIZE]);
 
 // The receiver is set up with an address that only partially overlaps the real preamble, so the
-// payload arrives shifted. This restores the original packet. See
+// payload arrives shifted. This restores the original packet at the legacy 5-bit alignment. See
 // https://github.com/lamperez/xiaomi-lightbar-nrf24?tab=readme-ov-file#baseband-packet-format
 void unshift_raw(const uint8_t raw[RAW_SIZE], uint8_t out[PACKET_SIZE]);
+
+// Decode a radio payload at any bit alignment, trying the legacy 5-bit alignment first.
+// Only missing known preamble bits are restored; payload and CRC bits are never repaired.
+// Returns false unless the preamble, separator and full CRC16 match. On failure out is unchanged.
+// Reads exactly PACKET_SIZE bytes; an additional byte from the radio is not needed.
+bool parse_raw(const uint8_t raw[PACKET_SIZE], Packet &out);
 
 // Returns false if the preamble or the checksum do not match.
 bool parse_packet(const uint8_t data[PACKET_SIZE], Packet &out);

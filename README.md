@@ -289,6 +289,11 @@ Home Assistant ──native API──► ESPHome ──► light: xiaomi_lightba
 - **Radio.** Each command is sent 20 times, 10 ms apart, like the original remote. The copies are spread over
   `loop()` calls and the radio switches back to receive after each one. Steps that arrive while a command is
   waiting are merged into it.
+- **Receive alignment.** The nRF24 payload can start at different bit positions with the receive address
+  `AAAAAAAAAA` (1-, 3- and 5-bit offsets observed on an ESP32-C3 setup). The decoder tries all eight bit
+  alignments, restoring only missing known preamble bits. A command is accepted only when its full preamble,
+  `FF` separator and CRC16 match. This recovers packets a fixed 5-bit decoder would reject; it cannot recover
+  packets the radio did not capture.
 - The protocol (`protocol.*`), the state engine (`bar_state.*`) and the daily calibration scheduler
   (`daily_calibration.*`) are plain C++ with no ESPHome dependency, and are covered by unit tests that run on a
   PC.
