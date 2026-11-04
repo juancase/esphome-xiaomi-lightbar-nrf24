@@ -263,13 +263,11 @@ void XiaomiLightbar::poll_receive_() {
 }
 
 void XiaomiLightbar::handle_raw_(const uint8_t raw[RAW_SIZE]) {
-  uint8_t data[PACKET_SIZE];
-  unshift_raw(raw, data);
   Packet packet;
-  if (!parse_packet(data, packet)) {
+  if (!parse_raw(raw, packet)) {
 #if ESPHOME_LOG_LEVEL >= ESPHOME_LOG_LEVEL_VERY_VERBOSE
     char hex[PACKET_SIZE * 2 + 1];
-    ESP_LOGVV(TAG, "Ignoring invalid packet: %s", format_hex_to(hex, data, PACKET_SIZE));
+    ESP_LOGVV(TAG, "Ignoring invalid packet: %s", format_hex_to(hex, raw, PACKET_SIZE));
 #endif
     return;
   }
